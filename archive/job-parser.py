@@ -1,123 +1,3 @@
-import pdfplumber
-import re
-import numpy as np
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-from nltk.corpus import stopwords
-import datetime
-import spacy
-from collections import Counter
-import nltk
-
-nlp = spacy.load("en_core_web_sm")
-
-def extract_education(text):
-    pattern = r"(?i)(?:(?:Bachelor|Master|Ph\.?D\.?|Doctor(?:ate)?|B\.?S\.?|M\.?S\.?|D\.?S\.?|J\.?D\.?|LL\.?B\.?|LL\.?M\.?)(?![a-zA-Z])\.?)+[^a-zA-Z]*[a-zA-Z]+[^a-zA-Z]*"
-
-    # Use the regular expression to find education entries in the text
-    education_info = re.findall(pattern, text)
-
-    return education_info
-
-def extract_keywords(text, num_keywords=10):
-    # Tokenize the text
-    words = re.findall(r'\b\w+\b', text.lower())
-    
-    # Remove stopwords
-    stop_words = set(stopwords.words('english'))
-    words = [word for word in words if word not in stop_words]
-    
-    # Count word frequencies
-    word_freq = Counter(words)
-    
-    # Get the most common keywords
-    keywords = word_freq.most_common(num_keywords)
-    
-    return keywords    
-
-def calculate_similarity(resume_keywords, job_keywords):
-    # Combine the keywords into strings
-    resume_keywords_text = " ".join(resume_keywords)
-    job_keywords_text = " ".join(job_keywords)
-    
-    # Combine the keywords texts into a list
-    all_keywords_text = [resume_keywords_text, job_keywords_text]
-    
-    # Create a CountVectorizer and fit transform the data
-    vectorizer = CountVectorizer(lowercase=True, stop_words='english')
-    vectorized_keywords = vectorizer.fit_transform(all_keywords_text).toarray()
-    
-    # Calculate cosine similarity
-    cosine_similarities = cosine_similarity([vectorized_keywords[0]], [vectorized_keywords[1]])[0][0]
-    
-    return cosine_similarities
-
-def evaluate_keywords_skills(resume_text,required_keywords_skills):
-    resume_keywords = [keyword for keyword, _ in extract_keywords(resume_text)]
-    print("Resume Keywords: ", resume_keywords)
-    print("Job Description Keywords: ", required_keywords_skills)
-    similarity = calculate_similarity(resume_keywords,required_keywords_skills)
-    formatted_score = format(similarity, '.2f')
-    score = float(formatted_score)*100
-    return score
-
-def evaluate_experience_abilities(resume_text,job_abilities,job_experiences):
-    # Extract work experience section
-    doc = nlp(resume_text)
-    experience_keywords = ["experience", "skills","abilities"]
-
-    extracted_experience = []
-    extracted_abilities = []
-
-    for sentence in doc.sents:
-        for keyword in experience_keywords:
-            if keyword in sentence.text.lower():
-                if "experience" in sentence.text.lower():
-                    extracted_experience.append(sentence.text)
-                else:
-                    extracted_abilities.append(sentence.text)
-    print("Abilities: ",extracted_abilities)
-    print("Experience: ",extracted_experience)
-    similarity = calculate_similarity(extracted_abilities,job_abilities)
-    formatted_score = format(similarity, '.2f')
-    scoreAbilities = float(formatted_score)*100
-    similarity = calculate_similarity(extracted_experience,job_experiences)
-    formatted_score = format(similarity, '.2f')
-    scoreExperience = float(formatted_score)*100
-    score = scoreAbilities+scoreExperience/2
-    return score
-
-def evaluate_requirements_qualifications(resume_text,job_description_education):
-    resume_education = extract_education(resume_text)
-    print("Resume Requirements: ", resume_education)
-    from sklearn.feature_extraction.text import CountVectorizer
-    from sklearn.metrics.pairwise import cosine_similarity
-    # Combine the education lists into a single list
-    combined_education = resume_education + job_description_education
-
-    # Create a CountVectorizer to convert education entries into vectors
-    vectorizer = CountVectorizer()
-
-    # Fit and transform the combined education list
-    education_vectors = vectorizer.fit_transform(combined_education)
-
-    # Calculate cosine similarity between the vectors
-    cosine_similarities = cosine_similarity(education_vectors)
-
-    average_similarity = cosine_similarities.mean()
-
-    return average_similarity*100
-
-
-def read_pdf(pdf_path):
-    with pdfplumber.open(pdf_path) as pdf:
-        text = ""
-        for page in pdf.pages:
-            text += page.extract_text()
-    return text
-
-resume_path = "data/Michael Goff.pdf"
-resume_text = read_pdf(resume_path)
 import nltk
 import re
 
@@ -172,7 +52,6 @@ Technical Skills
 
 # Tokenize the text
 sentences = nltk.sent_tokenize(job_description)
-job_description_education = extract_education(job_description)
 
 # Extract job title
 job_title_pattern = re.compile(r'^(.*?) at (.+)$', re.DOTALL)
@@ -203,6 +82,14 @@ else:
 
 # Split the required qualifications into a list of bullet points
 required_qualifications_list = [qualification.strip() for qualification in re.split(r'\n•\s*', qualifications_section) if qualification.strip()]
+
+# Extract preferred qualifications
+preferred_qualifications = []
+for sentence in sentences:
+    if "Preferred Qualifications" in sentence:
+        preferred_qualifications_text = re.sub(r'\s+', ' ', sentence).strip()
+        preferred_qualifications_text = preferred_qualifications_text.replace("Preferred Qualifications", "")
+        preferred_qualifications = preferred_qualifications_text.split("•")
 
 # Extract keywords
 # Extract the "Keywords" section
@@ -250,27 +137,14 @@ else:
 # Split the technical skills into a list
 technical_skills_list = [skill.strip() for skill in technical_skills_section.split('•') if skill.strip()]
 
-# Define the factors and their corresponding evaluation functions
-doc = nlp(job_description)
-experience_keywords = ["experience", "skills","abilities"]
-
-extracted_experience = []
-extracted_abilities = []
-
-for sentence in doc.sents:
-    for keyword in experience_keywords:
-        if keyword in sentence.text.lower():
-            if "experience" in sentence.text.lower():
-                extracted_experience.append(sentence.text)
-            else:
-                extracted_abilities.append(sentence.text)
-job_skills = keywords_list+soft_skills_list+hard_skills_list+technical_skills_list
-skills_score = evaluate_keywords_skills(resume_text,job_skills)
-experience_score = evaluate_experience_abilities(resume_text,extracted_abilities,extracted_experience)
-education_score = evaluate_requirements_qualifications(resume_text,job_description_education)
-
-total_score = (skills_score*0.40)+(experience_score*0.40)+(education_score*0.20)
-print("Total Score: ",total_score)
-print("Skills Score: ", skills_score)
-print("Experience Score: ", experience_score)
-print("Education Score: ", education_score)
+# Print the extracted information
+print("Job Title:", job_title)
+# Print the extracted duties
+print("Job Responsibilities & Duties:", duties_list)
+# Print the extracted required qualifications
+print("Required Qualifications:", required_qualifications_list)
+# Print the extracted keywords
+print("Keywords:", keywords_list)
+print("Soft Skills:", soft_skills_list)
+print("Hard Skills:", hard_skills_list)
+print("Technical Skills:", technical_skills_list)
